@@ -33,6 +33,7 @@ namespace esphome {
     climate::ClimateTraits traits() override;
     void send_data_(const uint8_t *message, uint8_t size);
     uint8_t get_checksum_(const uint8_t *message, size_t size);
+    void transmit_ir_(const uint8_t *remote_state);
     RemoteTransmitterBase *transmitter_{nullptr};
 
     sensor::Sensor *sensor_{nullptr};
