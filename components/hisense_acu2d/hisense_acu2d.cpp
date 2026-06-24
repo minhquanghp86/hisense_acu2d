@@ -327,46 +327,33 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
 
   uint8_t remote_state[WHIRLPOOL_STATE_LENGTH] = {0};
 
-/*
-  if (call.get_preset().has_value()) {
-    if (call.get_preset().value() == climate::CLIMATE_PRESET_COMFORT) {
-      data_[POWER] |= COMFORT_PRESET_MASK;
-    } else {
-      data_[POWER] &= ~COMFORT_PRESET_MASK;
-    }
-  }
-*/
   remote_state[0] = 0x83;
   remote_state[1] = 0x06;
   remote_state[6] = 0x80;
-  // MODEL DG11J191
   remote_state[18] = 0x08;
 
-  // Work mode on/off only
-  
-  // Sửa thành:
-  if ((call.get_mode().value() != climate::CLIMATE_MODE_OFF) &&  // Bật
-     (this->mode == climate::CLIMATE_MODE_OFF))
-  {
-      ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
-      remote_state[2] = 4;
-      remote_state[15] = 1; 
+  // ===== FIX: Đảo ngược logic POWER ON/OFF cho Sumikura =====
+  // Kiểm tra trạng thái hiện tại và trạng thái mong muốn
+  bool current_is_off = (this->mode == climate::CLIMATE_MODE_OFF);
+  bool target_is_off = (call.get_mode().has_value() && 
+                        call.get_mode().value() == climate::CLIMATE_MODE_OFF);
+
+  // Nếu đang OFF và muốn BẬT (bất kỳ mode nào khác OFF)
+  if (current_is_off && !target_is_off && call.get_mode().has_value()) {
+    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
+    remote_state[2] = 4;
+    remote_state[15] = 1; 
   }
-  if ((call.get_mode().value() == climate::CLIMATE_MODE_OFF) &&  // Tắt
-     (this->mode != climate::CLIMATE_MODE_OFF))
-  {
-      ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
-      remote_state[2] = 4;
-      remote_state[15] = 1; 
-  }
+  // Nếu đang BẬT và muốn TẮT
+  else if (!current_is_off && target_is_off) {
+    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
+    remote_state[2] = 4;
+    remote_state[15] = 1; 
   }
 
   // Work mode
   switch (call.get_mode().has_value() ? call.get_mode().value() : this->mode) {
     case climate::CLIMATE_MODE_HEAT_COOL:
-      // set fan auto
-      // set temp auto temp
-      // set sleep false
       remote_state[3] = WHIRLPOOL_AUTO;
       remote_state[15] = 0x17;
       break;
@@ -414,70 +401,60 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
   if (call.get_swing_mode().has_value()) {
     switch (call.get_swing_mode().value()) {
       case climate::CLIMATE_SWING_OFF:
-        if (this->swing_mode == climate::CLIMATE_SWING_VERTICAL || this->swing_mode == climate::CLIMATE_SWING_BOTH)
-        {
+        if (this->swing_mode == climate::CLIMATE_SWING_VERTICAL || this->swing_mode == climate::CLIMATE_SWING_BOTH) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_VERTICAL::OFF");
           remote_state[2] |= 0x80;
           remote_state[8] |= 0x40;
         }
-        if (this->swing_mode == climate::CLIMATE_SWING_HORIZONTAL || this->swing_mode == climate::CLIMATE_SWING_BOTH)
-        {
+        if (this->swing_mode == climate::CLIMATE_SWING_HORIZONTAL || this->swing_mode == climate::CLIMATE_SWING_BOTH) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::OFF");
           remote_state[8] |= 0x80;
           remote_state[15] = 0x08;
         }
         break;
       case climate::CLIMATE_SWING_VERTICAL:
-        if (this->swing_mode == climate::CLIMATE_SWING_BOTH)
-        {
+        if (this->swing_mode == climate::CLIMATE_SWING_BOTH) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::OFF");
           remote_state[8] |= 0x80;
           remote_state[15] = 0x08;
-        } else if (this->swing_mode == climate::CLIMATE_SWING_HORIZONTAL)
-        {
+        } else if (this->swing_mode == climate::CLIMATE_SWING_HORIZONTAL) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::OFF");
           remote_state[8] |= 0x80;
           remote_state[15] = 0x08;
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_VERTICAL::ON");
           remote_state[2] |= 0x80;
           remote_state[8] |= 0x40;
-        } else
-        {
+        } else {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_VERTICAL::ON");
           remote_state[2] |= 0x80;
           remote_state[8] |= 0x40;
         }
         break;
       case climate::CLIMATE_SWING_HORIZONTAL:
-        if (this->swing_mode == climate::CLIMATE_SWING_BOTH ) // 
-        {
+        if (this->swing_mode == climate::CLIMATE_SWING_BOTH) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_VERTICAL::OFF");
           remote_state[2] |= 0x80;
           remote_state[8] |= 0x40;
-        } else if (this->swing_mode == climate::CLIMATE_SWING_VERTICAL)
-        {
+        } else if (this->swing_mode == climate::CLIMATE_SWING_VERTICAL) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_VERTICAL::OFF");
           remote_state[2] |= 0x80;
           remote_state[8] |= 0x40;
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::ON");
           remote_state[8] |= 0x80;
           remote_state[15] = 0x08;
-        } else                 
-        {
-        ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::ON");
-        remote_state[8] |= 0x80;
-        remote_state[15] = 0x08;
+        } else {
+          ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::ON");
+          remote_state[8] |= 0x80;
+          remote_state[15] = 0x08;
         }
         break;
       case climate::CLIMATE_SWING_BOTH:
-        if (this->swing_mode != climate::CLIMATE_SWING_VERTICAL)
-        {
+        if (this->swing_mode != climate::CLIMATE_SWING_VERTICAL) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_VERTICAL::ON");
           remote_state[2] |= 0x80;
           remote_state[8] |= 0x40;
         }
-        if (this->swing_mode != climate::CLIMATE_SWING_HORIZONTAL)
-        {
+        if (this->swing_mode != climate::CLIMATE_SWING_HORIZONTAL) {
           ESP_LOGCONFIG(TAG, "CLIMATE_SWING_HORIZONTAL::ON");
           remote_state[8] |= 0x80;
           remote_state[15] = 0x08;
