@@ -140,6 +140,8 @@ void HisenseACU2D::setup() {
       });
       this->current_temperature = this->sensor_->state;
     }
+    // Khởi tạo trạng thái power theo dõi
+    this->powered_on_assumed_ = (this->mode != climate::CLIMATE_MODE_OFF);
 }
 
 void HisenseACU2D::loop() {
@@ -259,6 +261,9 @@ void HisenseACU2D::loop() {
     // Статус работы кондиционера
     if (OnOff == 0) {
       this->mode = climate::CLIMATE_MODE_OFF;
+      this->powered_on_assumed_ = false;
+    } else {
+      this->powered_on_assumed_ = true;
     }
 
     //ESP_LOGCONFIG(TAG, "On/Off:      %u", OnOff);
@@ -332,23 +337,26 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
   remote_state[6] = 0x80;
   remote_state[18] = 0x08;
 
-  // ===== FIX: Đảo ngược logic POWER ON/OFF cho Sumikura =====
-  // Kiểm tra trạng thái hiện tại và trạng thái mong muốn
-  bool current_is_off = (this->mode == climate::CLIMATE_MODE_OFF);
+  // ===== FIX: Sử dụng TOGGLE cho Sumikura (giống Whirlpool) =====
   bool target_is_off = (call.get_mode().has_value() && 
                         call.get_mode().value() == climate::CLIMATE_MODE_OFF);
-
-  // Nếu đang OFF và muốn BẬT (bất kỳ mode nào khác OFF)
-  if (current_is_off && !target_is_off && call.get_mode().has_value()) {
-    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
+  bool new_power_state = !target_is_off;
+  
+  // Kiểm tra xem trạng thái power có thay đổi không
+  if (call.get_mode().has_value() && new_power_state != this->powered_on_assumed_) {
+    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER TOGGLE (was %s, now %s)", 
+                  this->powered_on_assumed_ ? "ON" : "OFF",
+                  new_power_state ? "ON" : "OFF");
+    // Gửi lệnh TOGGLE (giống như nhấn nút nguồn trên remote)
     remote_state[2] = 4;
-    remote_state[15] = 1; 
+    remote_state[15] = 1;
+    // Cập nhật trạng thái theo dõi
+    this->powered_on_assumed_ = new_power_state;
   }
-  // Nếu đang BẬT và muốn TẮT
-  else if (!current_is_off && target_is_off) {
-    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
-    remote_state[2] = 4;
-    remote_state[15] = 1; 
+
+  // Nếu đang OFF và muốn BẬT nhưng không có lệnh TOGGLE (trường hợp đặc biệt)
+  if (!call.get_mode().has_value() && this->mode == climate::CLIMATE_MODE_OFF) {
+    // Không làm gì cả
   }
 
   // Work mode
