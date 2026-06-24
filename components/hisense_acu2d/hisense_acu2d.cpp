@@ -258,7 +258,7 @@ void HisenseACU2D::loop() {
         break;
     }
 
-    // Статус работы кондиционера
+    // Статус работы кондиционера - cập nhật powered_on_assumed_
     if (OnOff == 0) {
       this->mode = climate::CLIMATE_MODE_OFF;
       this->powered_on_assumed_ = false;
@@ -352,11 +352,6 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
     remote_state[15] = 1;
     // Cập nhật trạng thái theo dõi
     this->powered_on_assumed_ = new_power_state;
-  }
-
-  // Nếu đang OFF và muốn BẬT nhưng không có lệnh TOGGLE (trường hợp đặc biệt)
-  if (!call.get_mode().has_value() && this->mode == climate::CLIMATE_MODE_OFF) {
-    // Không làm gì cả
   }
 
   // Work mode
