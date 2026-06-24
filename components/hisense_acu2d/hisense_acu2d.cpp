@@ -119,18 +119,16 @@ unsigned int getDisplay(unsigned char *code)
     return 2;
 }
 
-// ─── Helper: transmit IR packet ─────────────────────────────────────────────
+// Helper: transmit IR packet
 void HisenseACU2D::transmit_ir_(const uint8_t *remote_state) {
   auto transmit = this->transmitter_->transmit();
   auto *data = transmit.get_data();
 
   data->set_carrier_frequency(38000);
 
-  // Header
   data->mark(WHIRLPOOL_HEADER_MARK);
   data->space(WHIRLPOOL_HEADER_SPACE);
 
-  // Data (21 bytes, chia thành 3 đoạn: 6 + 8 + 7 bytes, ngăn cách bởi GAP)
   auto bytes_sent = 0;
   for (uint8_t b = 0; b < WHIRLPOOL_STATE_LENGTH; b++) {
     for (uint8_t j = 0; j < 8; j++) {
@@ -145,13 +143,11 @@ void HisenseACU2D::transmit_ir_(const uint8_t *remote_state) {
     }
   }
 
-  // Footer
   data->mark(WHIRLPOOL_BIT_MARK);
-
   transmit.perform();
 }
 
-// ─── Helper: tính checksum cho remote_state ─────────────────────────────────
+// Helper: tinh checksum
 void compute_whirlpool_checksum(uint8_t *remote_state) {
   remote_state[13] = 0;
   for (uint8_t i = 2; i < 13; i++)
@@ -161,8 +157,6 @@ void compute_whirlpool_checksum(uint8_t *remote_state) {
   for (uint8_t i = 14; i < 20; i++)
     remote_state[20] ^= remote_state[i];
 }
-
-// ────────────────────────────────────────────────────────────────────────────
 
 void HisenseACU2D::dump_config() {
   ESP_LOGCONFIG(TAG, "HiSense AC Uart to Display:");
@@ -234,57 +228,33 @@ void HisenseACU2D::loop() {
     this->current_temperature = (float)CurTemp;
     this->target_temperature = (float)SetTemp;
 
-    // Work mode
     switch (getWorkMode(inputBuffer)) {
       case MODE_COOL:
-        this->mode = climate::CLIMATE_MODE_COOL;
-        break;
+        this->mode = climate::CLIMATE_MODE_COOL; break;
       case MODE_HEAT:
-        this->mode = climate::CLIMATE_MODE_HEAT;
-        break;
+        this->mode = climate::CLIMATE_MODE_HEAT; break;
       case MODE_ONLY_FAN:
-        this->mode = climate::CLIMATE_MODE_FAN_ONLY;
-        break;
+        this->mode = climate::CLIMATE_MODE_FAN_ONLY; break;
       case MODE_DRY:
-        this->mode = climate::CLIMATE_MODE_DRY;
-        break;
+        this->mode = climate::CLIMATE_MODE_DRY; break;
       default:
         this->mode = climate::CLIMATE_MODE_HEAT_COOL;
     }
 
-    // Fan mode
     switch (getFan(inputBuffer)) {
-      case FAN_AUTO:
-        this->fan_mode = climate::CLIMATE_FAN_AUTO;
-        break;
-      case FAN_MIN:
-        this->fan_mode = climate::CLIMATE_FAN_LOW;
-        break;
-      case FAN_MIDDLE:
-        this->fan_mode = climate::CLIMATE_FAN_MEDIUM;
-        break;
-      case FAN_MAX:
-        this->fan_mode = climate::CLIMATE_FAN_HIGH;
-        break;
+      case FAN_AUTO:   this->fan_mode = climate::CLIMATE_FAN_AUTO;   break;
+      case FAN_MIN:    this->fan_mode = climate::CLIMATE_FAN_LOW;    break;
+      case FAN_MIDDLE: this->fan_mode = climate::CLIMATE_FAN_MEDIUM; break;
+      case FAN_MAX:    this->fan_mode = climate::CLIMATE_FAN_HIGH;   break;
     }
 
-    // Swing mode
     switch (getSwig(inputBuffer)) {
-      case SWING_OFF:
-        this->swing_mode = climate::CLIMATE_SWING_OFF;
-        break;
-      case SWING_VERTICAL:
-        this->swing_mode = climate::CLIMATE_SWING_VERTICAL;
-        break;
-      case SWING_HORIZONTAL:
-        this->swing_mode = climate::CLIMATE_SWING_HORIZONTAL;
-        break;
-      case SWING_BOTH:
-        this->swing_mode = climate::CLIMATE_SWING_BOTH;
-        break;
+      case SWING_OFF:        this->swing_mode = climate::CLIMATE_SWING_OFF;        break;
+      case SWING_VERTICAL:   this->swing_mode = climate::CLIMATE_SWING_VERTICAL;   break;
+      case SWING_HORIZONTAL: this->swing_mode = climate::CLIMATE_SWING_HORIZONTAL; break;
+      case SWING_BOTH:       this->swing_mode = climate::CLIMATE_SWING_BOTH;       break;
     }
 
-    // On/Off — đặt SAU switch mode để ghi đè đúng
     if (OnOff == 0) {
       this->mode = climate::CLIMATE_MODE_OFF;
       this->powered_on_assumed_ = false;
@@ -332,7 +302,6 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
 
   uint8_t remote_state[WHIRLPOOL_STATE_LENGTH] = {0};
 
-  // Header bytes cố định
   remote_state[0] = 0x83;
   remote_state[1] = 0x06;
   remote_state[6] = 0x80;
@@ -342,23 +311,43 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
   bool target_is_off  = (call.get_mode().has_value() &&
                          call.get_mode().value() == climate::CLIMATE_MODE_OFF);
 
-  // ── POWER OFF ──────────────────────────────────────────────────────────────
-  // Gửi packet tắt máy thuần túy, KHÔNG tính mode/fan/temp, rồi return ngay.
+  // ── POWER OFF - Option A ──────────────────────────────────────────────────
+  // Giu nguyen mode/fan/temp hien tai, KHONG set POWER bit (0x04)
+  // Gia thuyet: AC dung TOGGLE, packet giong ON nhung khong co POWER bit
   if (target_is_off) {
-    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
-    remote_state[2]  = WHIRLPOOL_POWER;  // 0x04
-    remote_state[15] = 0x00;
+    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF - Option A (no power bit)");
+    switch (this->mode) {
+      case climate::CLIMATE_MODE_HEAT_COOL:
+        remote_state[3] = WHIRLPOOL_AUTO; remote_state[15] = 0x17; break;
+      case climate::CLIMATE_MODE_HEAT:
+        remote_state[3] = WHIRLPOOL_HEAT; remote_state[15] = 6;    break;
+      case climate::CLIMATE_MODE_COOL:
+        remote_state[3] = WHIRLPOOL_COOL; remote_state[15] = 6;    break;
+      case climate::CLIMATE_MODE_DRY:
+        remote_state[3] = WHIRLPOOL_DRY;  remote_state[15] = 6;    break;
+      case climate::CLIMATE_MODE_FAN_ONLY:
+        remote_state[3] = WHIRLPOOL_FAN;  remote_state[15] = 6;    break;
+      default: break;
+    }
+    auto t = (uint8_t)roundf(this->target_temperature);
+    remote_state[3] |= (uint8_t)(t - MIN_VALID_TEMPERATURE) << 4;
+    switch (this->fan_mode.value()) {
+      case climate::CLIMATE_FAN_HIGH:   remote_state[2] |= WHIRLPOOL_FAN_HIGH; break;
+      case climate::CLIMATE_FAN_MEDIUM: remote_state[2] |= WHIRLPOOL_FAN_MED;  break;
+      case climate::CLIMATE_FAN_LOW:    remote_state[2] |= WHIRLPOOL_FAN_LOW;  break;
+      default: break;
+    }
+    // byte[2] KHONG co 0x04 (POWER bit)
     compute_whirlpool_checksum(remote_state);
     this->transmit_ir_(remote_state);
     return;
   }
 
-  // ── POWER ON (từ trạng thái OFF) ──────────────────────────────────────────
+  // ── POWER ON (tu trang thai OFF) ──────────────────────────────────────────
   if (current_is_off && !target_is_off) {
     ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
     remote_state[2]  = WHIRLPOOL_POWER;  // 0x04
     remote_state[15] = 0x01;
-    // Tiếp tục để set thêm mode / fan / temp bên dưới
   }
 
   // ── Work mode ─────────────────────────────────────────────────────────────
@@ -367,27 +356,16 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
                                         : this->mode;
   switch (effective_mode) {
     case climate::CLIMATE_MODE_HEAT_COOL:
-      remote_state[3]  = WHIRLPOOL_AUTO;
-      remote_state[15] = 0x17;
-      break;
+      remote_state[3]  = WHIRLPOOL_AUTO; remote_state[15] = 0x17; break;
     case climate::CLIMATE_MODE_HEAT:
-      remote_state[3]  = WHIRLPOOL_HEAT;
-      remote_state[15] = 6;
-      break;
+      remote_state[3]  = WHIRLPOOL_HEAT; remote_state[15] = 6;    break;
     case climate::CLIMATE_MODE_COOL:
-      remote_state[3]  = WHIRLPOOL_COOL;
-      remote_state[15] = 6;
-      break;
+      remote_state[3]  = WHIRLPOOL_COOL; remote_state[15] = 6;    break;
     case climate::CLIMATE_MODE_DRY:
-      remote_state[3]  = WHIRLPOOL_DRY;
-      remote_state[15] = 6;
-      break;
+      remote_state[3]  = WHIRLPOOL_DRY;  remote_state[15] = 6;    break;
     case climate::CLIMATE_MODE_FAN_ONLY:
-      remote_state[3]  = WHIRLPOOL_FAN;
-      remote_state[15] = 6;
-      break;
-    default:
-      break;
+      remote_state[3]  = WHIRLPOOL_FAN;  remote_state[15] = 6;    break;
+    default: break;
   }
 
   // ── Temperature ───────────────────────────────────────────────────────────
@@ -403,17 +381,10 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
                                           ? call.get_fan_mode().value()
                                           : this->fan_mode.value();
   switch (effective_fan) {
-    case climate::CLIMATE_FAN_HIGH:
-      remote_state[2] |= WHIRLPOOL_FAN_HIGH;
-      break;
-    case climate::CLIMATE_FAN_MEDIUM:
-      remote_state[2] |= WHIRLPOOL_FAN_MED;
-      break;
-    case climate::CLIMATE_FAN_LOW:
-      remote_state[2] |= WHIRLPOOL_FAN_LOW;
-      break;
-    default:
-      break;
+    case climate::CLIMATE_FAN_HIGH:   remote_state[2] |= WHIRLPOOL_FAN_HIGH; break;
+    case climate::CLIMATE_FAN_MEDIUM: remote_state[2] |= WHIRLPOOL_FAN_MED;  break;
+    case climate::CLIMATE_FAN_LOW:    remote_state[2] |= WHIRLPOOL_FAN_LOW;  break;
+    default: break;
   }
 
   // ── Swing ─────────────────────────────────────────────────────────────────
