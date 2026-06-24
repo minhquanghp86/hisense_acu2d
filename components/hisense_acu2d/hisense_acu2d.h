@@ -31,9 +31,7 @@ namespace esphome {
 
   protected:
     climate::ClimateTraits traits() override;
-    //void read_state_(const uint8_t *data, uint8_t size);
     void send_data_(const uint8_t *message, uint8_t size);
-    //void dump_message_(const char *title, const uint8_t *message, uint8_t size);
     uint8_t get_checksum_(const uint8_t *message, size_t size);
     RemoteTransmitterBase *transmitter_{nullptr};
 
@@ -41,6 +39,7 @@ namespace esphome {
     
     bool ifeel_state_ = false;
     bool ifeel_switching_ = false;
+    bool powered_on_assumed_ = false;  // <--- THÊM DÒNG NÀY
 
     switch_::Switch *ifeel_switch_ = nullptr;  // Switch to toggle iFeel mode on/off
 
