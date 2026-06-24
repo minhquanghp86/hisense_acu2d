@@ -343,24 +343,22 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
   remote_state[18] = 0x08;
 
   // Work mode on/off only
-  if (call.get_mode().has_value()) {
-    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::change mode");
-    if ((call.get_mode().value() == climate::CLIMATE_MODE_OFF)  && // 
-       (this->mode != climate::CLIMATE_MODE_OFF)
-       )
-      {
-        ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
-        remote_state[2] = 4;
-        remote_state[15] = 1; 
-      }
-    if ((call.get_mode().value() != climate::CLIMATE_MODE_OFF) && // 
-       (this->mode == climate::CLIMATE_MODE_OFF)
-       )
-      {
-        ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
-        remote_state[2] = 4;
-        remote_state[15] = 1; 
-      }
+  
+  // Sửa thành:
+  if ((call.get_mode().value() != climate::CLIMATE_MODE_OFF) &&  // Bật
+     (this->mode == climate::CLIMATE_MODE_OFF))
+  {
+      ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
+      remote_state[2] = 4;
+      remote_state[15] = 1; 
+  }
+  if ((call.get_mode().value() == climate::CLIMATE_MODE_OFF) &&  // Tắt
+     (this->mode != climate::CLIMATE_MODE_OFF))
+  {
+      ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
+      remote_state[2] = 4;
+      remote_state[15] = 1; 
+  }
   }
 
   // Work mode
