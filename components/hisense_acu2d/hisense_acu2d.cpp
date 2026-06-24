@@ -337,21 +337,45 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
   remote_state[6] = 0x80;
   remote_state[18] = 0x08;
 
-  // ===== FIX: Sử dụng TOGGLE cho Sumikura (giống Whirlpool) =====
+  // ===== FIX: Thử các giá trị khác nhau cho POWER OFF =====
+  bool current_is_off = (this->mode == climate::CLIMATE_MODE_OFF);
   bool target_is_off = (call.get_mode().has_value() && 
                         call.get_mode().value() == climate::CLIMATE_MODE_OFF);
-  bool new_power_state = !target_is_off;
   
-  // Kiểm tra xem trạng thái power có thay đổi không
-  if (call.get_mode().has_value() && new_power_state != this->powered_on_assumed_) {
-    ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER TOGGLE (was %s, now %s)", 
-                  this->powered_on_assumed_ ? "ON" : "OFF",
-                  new_power_state ? "ON" : "OFF");
-    // Gửi lệnh TOGGLE (giống như nhấn nút nguồn trên remote)
-    remote_state[2] = 4;
-    remote_state[15] = 1;
-    // Cập nhật trạng thái theo dõi
-    this->powered_on_assumed_ = new_power_state;
+  if (call.get_mode().has_value() && target_is_off != current_is_off) {
+    if (!target_is_off) {
+      // POWER ON - giữ nguyên
+      ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER ON");
+      remote_state[2] = 4;
+      remote_state[15] = 1;
+    } else {
+      // POWER OFF - THỬ NHIỀU TỔ HỢP KHÁC NHAU
+      ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF - TRYING ALTERNATIVE");
+      
+      // ===== CHỌN 1 TRONG CÁC OPTION SAU =====
+      // Mặc định đang dùng Option 1, nếu không được hãy comment và thử Option khác
+      
+      // Option 1: Tắt hoàn toàn
+      remote_state[2] = 0;
+      remote_state[15] = 0;
+      
+      // Option 2: Tắt nhưng giữ cấu hình
+      // remote_state[2] = 4;
+      // remote_state[15] = 0;
+      
+      // Option 3: Tắt bằng cách khác
+      // remote_state[2] = 0;
+      // remote_state[15] = 1;
+      
+      // Option 4: Xóa bit power
+      // remote_state[2] &= ~4;
+      // remote_state[15] = 1;
+      
+      // Option 5: Thay đổi remote_state[18]
+      // remote_state[18] = 0x28;
+      // remote_state[2] = 4;
+      // remote_state[15] = 1;
+    }
   }
 
   // Work mode
