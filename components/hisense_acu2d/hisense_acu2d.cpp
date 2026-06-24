@@ -356,12 +356,12 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
       // Mặc định đang dùng Option 1, nếu không được hãy comment và thử Option khác
       
       // Option 1: Tắt hoàn toàn
-      //remote_state[2] = 0;
-      //remote_state[15] = 0;
+      // remote_state[2] = 0;
+      // remote_state[15] = 0;
       
       // Option 2: Tắt nhưng giữ cấu hình
-       remote_state[2] = 4;
-       remote_state[15] = 0;
+       //remote_state[2] = 4;
+       //remote_state[15] = 0;
       
       // Option 3: Tắt bằng cách khác
       // remote_state[2] = 0;
@@ -372,9 +372,9 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
       // remote_state[15] = 1;
       
       // Option 5: Thay đổi remote_state[18]
-      // remote_state[18] = 0x28;
-      // remote_state[2] = 4;
-      // remote_state[15] = 1;
+       remote_state[18] = 0x28;
+       remote_state[2] = 4;
+       remote_state[15] = 1;
     }
   }
 
