@@ -347,7 +347,7 @@ void HisenseACU2D::control(const climate::ClimateCall &call) {
   if (target_is_off) {
     ESP_LOGCONFIG(TAG, "HisenseACU2D::control::POWER OFF");
     remote_state[2]  = WHIRLPOOL_POWER;  // 0x04
-    remote_state[15] = 0x01;
+    remote_state[15] = 0x00;
     compute_whirlpool_checksum(remote_state);
     this->transmit_ir_(remote_state);
     return;
